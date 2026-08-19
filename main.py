@@ -15,9 +15,21 @@ from services.persistence.exercise_repository import get_users_exercises
 from groq import Groq
 from services.coaching.llm import LLMCoach
 from services.coaching.tts import TextToSpeech
-from services.coaching.voice_pipeline import VoicePipeline, autoplay_audio
+from services.coaching.voice_pipeline import (
+    VoicePipeline,
+    autoplay_audio,
+    queue_voice_result,
+)
 
-
+METRICS_REFRESH_SECONDS = 0.75
+CAMERA_CONSTRAINTS = {
+    "video": {
+        "width": {"ideal": 640, "max": 640},
+        "height": {"ideal": 480, "max": 480},
+        "frameRate": {"ideal": 15, "max": 20},
+    },
+    "audio": False,
+}
   
 def main():
     load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -107,9 +119,8 @@ def main():
                         exercise=plan_exercise,
                         metrics={}
                     )
-                    
-                    if result:
-                        st.session_state.audio_to_play, st.session_state.coach_feedback = result
+
+                    queue_voice_result(result)
 
                 st.rerun()
         else:
@@ -134,8 +145,7 @@ def main():
                         exercise=exercise,
                         metrics={}
                     )
-                    if result:
-                        st.session_state.audio_to_play, st.session_state.coach_feedback = result
+                    queue_voice_result(result)
 
                 st.session_state.last_notified_workout_complete = True
 
@@ -193,7 +203,10 @@ def main():
     st.markdown("#### Real-time pose detection with proactive AI voice coaching")
  
     if st.session_state.get("audio_to_play"):
-        autoplay_audio(st.session_state.audio_to_play)
+        autoplay_audio(
+            st.session_state.audio_to_play,
+            st.session_state.get("audio_playback_id", 0),
+        )
 
     if st.session_state.get("coach_feedback"):
         st.markdown("")
@@ -234,20 +247,16 @@ def main():
             mode=WebRtcMode.SENDRECV,
             video_processor_factory=VideoProcessorClass,
             rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-            media_stream_constraints={
-                "video": True,
-                "audio": False
-            },
+            media_stream_constraints=CAMERA_CONSTRAINTS,
             async_processing=True
         )
 
         sync_metrics_update(context)
+        inject_webrtc_styles()
 
         if context.state.playing:
-            time.sleep(0.25)
+            time.sleep(METRICS_REFRESH_SECONDS)
             st.rerun()
-
-        inject_webrtc_styles()
 
     st.divider()
 

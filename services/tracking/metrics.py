@@ -2,6 +2,7 @@ import streamlit as st
 import time
 from services.config.workout_config import METRICS_FIELDS
 from services.persistence.exercise_repository import add_exercise
+from services.coaching.voice_pipeline import queue_voice_result
 
 
 def sync_metrics_update(context):
@@ -72,9 +73,7 @@ def sync_metrics_update(context):
                 exercise=exercise,
                 metrics=latest_metrics,
             )
-
-            if result:
-                st.session_state.audio_to_play, st.session_state.coach_feedback = result
+            queue_voice_result(result)
 
         st.session_state.set_cycle_started_at = now_ts
         st.session_state.last_saved_sets_completed = sets_completed
@@ -88,9 +87,7 @@ def sync_metrics_update(context):
                 exercise=exercise,
                 metrics=latest_metrics,
             )
-
-            if result:
-                st.session_state.audio_to_play, st.session_state.coach_feedback = result
+            queue_voice_result(result)
                 
     pose_detected = latest_metrics.get("pose_detected", True)
     
@@ -100,9 +97,7 @@ def sync_metrics_update(context):
             exercise=exercise,
             metrics={"issue": "No pose detected! Please step into the camera frame."},
         )
-    
-        if result:
-            st.session_state.audio_to_play, st.session_state.coach_feedback = result
+        queue_voice_result(result)
 
     if st.session_state.get("voice_pipeline"):
         result = st.session_state.voice_pipeline.process_event(
@@ -110,6 +105,4 @@ def sync_metrics_update(context):
             exercise=exercise,
             metrics=latest_metrics,
         )
-        
-        if result:
-            st.session_state.audio_to_play, st.session_state.coach_feedback = result
+        queue_voice_result(result)

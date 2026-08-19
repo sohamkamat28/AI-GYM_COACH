@@ -1,7 +1,5 @@
 import os
 import streamlit as st
-import streamlit.components.v1 as components
-import base64
  
 
 def load_css(file_path):
@@ -13,19 +11,16 @@ def load_css(file_path):
 def inject_local_font(font_path, font_name):
     if not os.path.exists(font_path):
         return
-    
-    with open(font_path, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode()
 
     ext = os.path.splitext(font_path)[1].lstrip(".")
     fmt = {"otf": "opentype"}.get(ext, ext)
-    mime = {"otf": "font/otf"}.get(ext, f"font/{ext}")
+    filename = os.path.basename(font_path)
 
     st.markdown(f"""
         <style>
         @font-face {{
             font-family: '{font_name}';
-            src: url('data:{mime};base64,{encoded}') format('{fmt}');
+            src: url('/app/static/{filename}') format('{fmt}');
             font-weight: 100 900;
             font-style: normal;
         }}
@@ -38,10 +33,9 @@ def inject_webrtc_styles():
     if not os.path.exists(font_path):
         return
 
-    with open(font_path, "rb") as font_file:
-        encoded_font = base64.b64encode(font_file.read()).decode()
+    filename = os.path.basename(font_path)
 
-    components.html(
+    st.iframe(
         f"""
         <script>
         (function patchWebRTCStyles() {{
@@ -55,7 +49,7 @@ def inject_webrtc_styles():
                     style.textContent = `
                         @font-face {{
                             font-family: 'AdobeClean';
-                            src: url('data:font/otf;base64,{encoded_font}') format('opentype');
+                            src: url('/app/static/{filename}') format('opentype');
                             font-weight: 100 900;
                             font-style: normal;
                         }}
@@ -92,5 +86,6 @@ def inject_webrtc_styles():
         }})();
         </script>
         """,
-        height=0,
+        height=1,
+        tab_index=-1,
     )

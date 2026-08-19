@@ -1,8 +1,10 @@
+import base64
+import hashlib
 import time
 import streamlit as st
 
 class VoicePipeline:
-    VERSION = 4
+    VERSION = 5
     MAJOR_EVENTS = {"workout_started", "set_completed", "workout_completed"}
     EVENT_COOLDOWNS = {
         "ongoing_form_check": 8.0,
@@ -127,13 +129,102 @@ class VoicePipeline:
         )
 
         return voice, text
-    
-def autoplay_audio(audio_bytes):
+
+
+def queue_voice_result(result):
+    """Store one coaching result and assign it a unique playback event."""
+    if not result:
+        return False
+
+    audio_bytes, feedback = result
+
+    if feedback:
+        st.session_state.coach_feedback = feedback
+
+    if audio_bytes:
+        st.session_state.audio_to_play = audio_bytes
+        st.session_state.audio_playback_id = (
+            st.session_state.get("audio_playback_id", 0) + 1
+        )
+
+    return bool(audio_bytes or feedback)
+
+
+def autoplay_audio(audio_bytes, playback_id):
+    """Play a coaching cue once and show a button only if autoplay is blocked."""
     if not audio_bytes:
         return
 
-    st.markdown(
-        "<style>[data-testid='stAudio'] {display: none;}</style>",
-        unsafe_allow_html=True,
+    encoded_audio = base64.b64encode(audio_bytes).decode("ascii")
+    audio_digest = hashlib.sha256(audio_bytes).hexdigest()[:12]
+    event_key = f"coach-{playback_id}-{audio_digest}"
+
+    st.iframe(
+        f"""
+        <style>
+          html, body {{ margin: 0; background: transparent; overflow: hidden; }}
+          audio {{ display: none; }}
+          #voice-fallback {{
+            width: 100%;
+            border: 1px solid rgba(245, 166, 35, 0.45);
+            border-radius: 0;
+            background: rgba(245, 166, 35, 0.08);
+            color: #f5a623;
+            font: 600 12px/1.2 sans-serif;
+            letter-spacing: 0.06em;
+            padding: 10px 14px;
+            cursor: pointer;
+          }}
+        </style>
+        <audio id="coach-audio" preload="auto"
+          src="data:audio/mpeg;base64,{encoded_audio}"></audio>
+        <button id="voice-fallback" type="button" hidden>🔊 Play AI coach</button>
+        <script>
+          (() => {{
+            const eventKey = {event_key!r};
+            const audio = document.getElementById("coach-audio");
+            const fallback = document.getElementById("voice-fallback");
+
+            const wasPlayed = () => {{
+              try {{ return window.parent.__aiGymLastVoiceEvent === eventKey; }}
+              catch (_) {{ return false; }}
+            }};
+
+            const markPlayed = () => {{
+              try {{ window.parent.__aiGymLastVoiceEvent = eventKey; }}
+              catch (_) {{ /* The current iframe will still finish playback. */ }}
+            }};
+
+            const hideFallback = () => {{
+              fallback.hidden = true;
+            }};
+
+            const showFallback = () => {{
+              fallback.hidden = false;
+            }};
+
+            const play = () => {{
+              const attempt = audio.play();
+              if (!attempt) {{
+                markPlayed();
+                hideFallback();
+                return;
+              }}
+
+              attempt.then(() => {{
+                markPlayed();
+                hideFallback();
+              }}).catch(showFallback);
+            }};
+
+            fallback.addEventListener("click", play);
+            audio.addEventListener("ended", hideFallback);
+
+            if (wasPlayed()) hideFallback();
+            else play();
+          }})();
+        </script>
+        """,
+        height="content",
+        tab_index=-1,
     )
-    st.audio(audio_bytes, format="audio/mp3", autoplay=True)

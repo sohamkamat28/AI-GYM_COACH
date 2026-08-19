@@ -16,6 +16,8 @@ from services.config.workout_config import POSE_CONNECTIONS
 
 
 class VideoProcessorClass(VideoProcessorBase):
+    INFERENCE_INTERVAL = 2
+
     def __init__(self):
         self._lock = threading.Lock()
         self._latest_metrics = None
@@ -44,6 +46,8 @@ class VideoProcessorClass(VideoProcessorBase):
         }
 
         self._frame_timestamps_ms = 0
+        self._processed_frame_count = 0
+        self._last_landmarks = None
     
     def set_latest_metrics(self, metrics):
         with self._lock:
@@ -194,38 +198,59 @@ class VideoProcessorClass(VideoProcessorBase):
             dtype=np.uint8
         )
 
-        mp_image = mp.Image(
-            image_format=mp.ImageFormat.SRGB,
-            data=cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        self._processed_frame_count += 1
+        should_run_inference = (
+            self._last_landmarks is None
+            or self._processed_frame_count % self.INFERENCE_INTERVAL == 1
         )
 
-        self._frame_timestamps_ms += 30
-        result = self._landmarker.detect_for_video(mp_image, self._frame_timestamps_ms)
+        if should_run_inference:
+            mp_image = mp.Image(
+                image_format=mp.ImageFormat.SRGB,
+                data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            )
 
-        if result.pose_landmarks:
-            landmarks = result.pose_landmarks[0]
+            source_timestamp_ms = (
+                int(float(frame.time) * 1000)
+                if frame.time is not None
+                else self._frame_timestamps_ms + 1
+            )
+            self._frame_timestamps_ms = max(
+                self._frame_timestamps_ms + 1,
+                source_timestamp_ms,
+            )
+            result = self._landmarker.detect_for_video(
+                mp_image,
+                self._frame_timestamps_ms,
+            )
 
-            self._draw_skeleton(image, landmarks)
+            if result.pose_landmarks:
+                self._last_landmarks = result.pose_landmarks[0]
+                ex_type = self.get_exercise()
+                detector = self._detectors.get(ex_type)
 
-            ex_type = self.get_exercise()
+                if detector:
+                    metrics = detector.process(self._last_landmarks)
+                    metrics["pose_detected"] = True
+                    self.set_latest_metrics(metrics)
+            else:
+                self._last_landmarks = None
 
-            detector = self._detectors.get(ex_type)
+                with self._lock:
+                    if self._latest_metrics is not None:
+                        self._latest_metrics["pose_detected"] = False
+                    else:
+                        self._latest_metrics = {"pose_detected": False}
 
-            if detector:
-                metrics = detector.process(landmarks)
+        latest_metrics = self.get_latest_metrics()
+        ex_type = self.get_exercise()
 
-                metrics["pose_detected"] = True
+        if self._last_landmarks is not None:
+            self._draw_skeleton(image, self._last_landmarks)
 
-                self._draw_overlays(image, metrics, ex_type)
-
-                self.set_latest_metrics(metrics)
+            if latest_metrics and latest_metrics.get("pose_detected", False):
+                self._draw_overlays(image, latest_metrics, ex_type)
         else:
             self._draw_no_pose_warnings(image)
-            
-            with self._lock:
-                if self._latest_metrics is not None:
-                    self._latest_metrics["pose_detected"] = False
-                else:
-                    self._latest_metrics = {"pose_detected": False}
 
         return av.VideoFrame.from_ndarray(image, format="bgr24")
