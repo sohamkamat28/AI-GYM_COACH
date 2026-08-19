@@ -1,0 +1,30 @@
+# macOS metadata
+.DS_Store
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets and local environment overrides
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local application data
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and editor state
+*.log
+.vscode/
+.idea/
