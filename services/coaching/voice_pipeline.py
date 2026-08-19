@@ -2,6 +2,7 @@ import base64
 import hashlib
 import time
 import streamlit as st
+import streamlit.components.v1 as components
 
 class VoicePipeline:
     VERSION = 5
@@ -159,7 +160,7 @@ def autoplay_audio(audio_bytes, playback_id):
     audio_digest = hashlib.sha256(audio_bytes).hexdigest()[:12]
     event_key = f"coach-{playback_id}-{audio_digest}"
 
-    st.iframe(
+    components.html(
         f"""
         <style>
           html, body {{ margin: 0; background: transparent; overflow: hidden; }}
@@ -225,6 +226,6 @@ def autoplay_audio(audio_bytes, playback_id):
           }})();
         </script>
         """,
-        height="content",
+        height=48,
         tab_index=-1,
     )

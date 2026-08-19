@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import streamlit.components.v1 as components
  
 
 def load_css(file_path):
@@ -35,7 +36,7 @@ def inject_webrtc_styles():
 
     filename = os.path.basename(font_path)
 
-    st.iframe(
+    components.html(
         f"""
         <script>
         (function patchWebRTCStyles() {{
